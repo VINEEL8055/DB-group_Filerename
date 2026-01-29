@@ -3,3 +3,7 @@ ocrmypdf
 pytesseract
 streamlit
 pdfplumber
+streamlit
+pdfplumber
+pytesseract
+Pillow
