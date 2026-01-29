@@ -7,3 +7,8 @@ streamlit
 pdfplumber
 pytesseract
 Pillow
+streamlit
+pdfplumber
+pytesseract
+Pillow
+numpy
