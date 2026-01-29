@@ -3,36 +3,50 @@ import pdfplumber
 import pytesseract
 import re
 import io
+import pandas as pd
 
-import pytesseract
-import shutil
 
-if not shutil.which("tesseract"):
-    st.error("Tesseract OCR is not installed in this environment.")
-    st.stop()
-    
-def extract_smo_via_ocr(pdf_file):
+def extract_smo_via_ocr_with_confidence(pdf_file):
     """
-    OCR-based extraction for scanned PDFs.
-    Looks for any reference starting with 'SMO'
+    OCR-only extraction for scanned PDFs.
+    Returns (SMO_REFERENCE, confidence%)
     """
+
+    best_match = None
+    best_confidence = 0
+
     with pdfplumber.open(pdf_file) as pdf:
         for page in pdf.pages:
-            # Convert page to image
             image = page.to_image(resolution=300).original
 
-            # OCR the image
-            text = pytesseract.image_to_string(image)
+            # OCR with confidence data
+            ocr_data = pytesseract.image_to_data(
+                image, output_type=pytesseract.Output.DATAFRAME
+            )
 
-            # Normalize OCR output (remove spaces/newlines)
-            cleaned_text = re.sub(r"\s+", "", text.upper())
+            # Drop empty rows
+            ocr_data = ocr_data.dropna(subset=["text", "conf"])
 
-            match = re.search(r"SMO[A-Z0-9]+", cleaned_text)
-            if match:
-                return match.group(0)
+            # Normalize text
+            ocr_data["clean_text"] = (
+                ocr_data["text"].astype(str).str.upper().str.replace(" ", "")
+            )
 
-    return None
+            for _, row in ocr_data.iterrows():
+                match = re.search(r"SMO[A-Z0-9]+", row["clean_text"])
+                if match:
+                    conf = float(row["conf"])
+                    if conf > best_confidence:
+                        best_match = match.group(0)
+                        best_confidence = conf
 
+    if best_match:
+        return best_match, round(best_confidence, 2)
+
+    return None, None
+
+
+# ---------------- STREAMLIT UI ----------------
 
 st.set_page_config(
     page_title="SMO PDF OCR Renamer",
@@ -42,34 +56,45 @@ st.set_page_config(
 
 st.title("📦 SMO Shipment PDF Renamer (OCR)")
 st.write(
-    "Designed for **scanned shipment PDFs**. "
-    "The app uses OCR to detect any reference starting with **SMO**."
+    "Upload **scanned shipment PDFs**. "
+    "The app uses OCR to detect references starting with **SMO**, "
+    "supports **bulk uploads**, and shows **confidence scores**."
 )
 
-uploaded_file = st.file_uploader(
-    "Upload scanned shipment PDF",
-    type=["pdf"]
+uploaded_files = st.file_uploader(
+    "Upload one or more scanned PDFs",
+    type=["pdf"],
+    accept_multiple_files=True
 )
 
-if uploaded_file:
-    with st.spinner("Running OCR and detecting SMO reference..."):
-        smo_ref = extract_smo_via_ocr(uploaded_file)
+if uploaded_files:
+    st.divider()
 
-    if smo_ref:
-        st.success(f"✅ SMO Reference Found: **{smo_ref}**")
+    for uploaded_file in uploaded_files:
+        st.subheader(f"📄 {uploaded_file.name}")
 
-        uploaded_file.seek(0)
-        pdf_bytes = uploaded_file.read()
+        with st.spinner("Running OCR..."):
+            smo_ref, confidence = extract_smo_via_ocr_with_confidence(uploaded_file)
 
-        st.download_button(
-            label="⬇️ Download Renamed PDF",
-            data=pdf_bytes,
-            file_name=f"{smo_ref}.pdf",
-            mime="application/pdf"
-        )
-    else:
-        st.error("❌ No SMO reference detected")
-        st.info(
-            "OCR ran successfully, but no reference starting with **SMO** "
-            "was found. Try a clearer scan if possible."
-        )
+        if smo_ref:
+            st.success(f"✅ Found: **{smo_ref}**")
+            st.write(f"📊 OCR Confidence: **{confidence}%**")
+
+            uploaded_file.seek(0)
+            pdf_bytes = uploaded_file.read()
+
+            st.download_button(
+                label=f"⬇️ Download {smo_ref}.pdf",
+                data=pdf_bytes,
+                file_name=f"{smo_ref}.pdf",
+                mime="application/pdf",
+                key=uploaded_file.name
+            )
+        else:
+            st.error("❌ No SMO reference detected")
+            st.info(
+                "OCR completed but no reference starting with **SMO** was found. "
+                "This may be due to a low-quality scan."
+            )
+
+        st.divider()
