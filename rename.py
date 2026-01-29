@@ -4,7 +4,13 @@ import pytesseract
 import re
 import io
 
+import pytesseract
+import shutil
 
+if not shutil.which("tesseract"):
+    st.error("Tesseract OCR is not installed in this environment.")
+    st.stop()
+    
 def extract_smo_via_ocr(pdf_file):
     """
     OCR-based extraction for scanned PDFs.
