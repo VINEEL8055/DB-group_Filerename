@@ -2,74 +2,54 @@ import streamlit as st
 import pdfplumber
 import pytesseract
 import re
-import numpy as np
-from PIL import Image, ImageEnhance
 import io
+import pandas as pd
 
-
-# ---------------- IMAGE PREPROCESSING ---------------- #
-
-def preprocess_image(img):
-    """
-    Improve scanned image quality for OCR
-    """
-    img = img.convert("L")  # grayscale
-    img = ImageEnhance.Contrast(img).enhance(2.0)
-    img = ImageEnhance.Sharpness(img).enhance(2.0)
-    return img
-
-
-# ---------------- OCR + CONFIDENCE ---------------- #
 
 def extract_smo_via_ocr_with_confidence(pdf_file):
+    """
+    OCR-only extraction for scanned PDFs.
+    Returns (SMO_REFERENCE, confidence%)
+    """
+
     best_match = None
     best_confidence = 0
 
-    custom_config = (
-        "--oem 3 "
-        "--psm 6 "
-        "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    )
-
     with pdfplumber.open(pdf_file) as pdf:
         for page in pdf.pages:
-            img = page.to_image(resolution=300).original
-            img = preprocess_image(img)
+            image = page.to_image(resolution=300).original
 
-            data = pytesseract.image_to_data(
-                img,
-                config=custom_config,
-                output_type=pytesseract.Output.DICT
+            # OCR with confidence data
+            ocr_data = pytesseract.image_to_data(
+                image, output_type=pytesseract.Output.DATAFRAME
             )
 
-            tokens = []
-            confidences = []
+            # Drop empty rows
+            ocr_data = ocr_data.dropna(subset=["text", "conf"])
 
-            for text, conf in zip(data["text"], data["conf"]):
-                if conf != "-1" and text.strip():
-                    tokens.append(text.upper())
-                    confidences.append(float(conf))
+            # Normalize text
+            ocr_data["clean_text"] = (
+                ocr_data["text"].astype(str).str.upper().str.replace(" ", "")
+            )
 
-            combined_text = "".join(tokens)
-
-            match = re.search(r"SMO[A-Z0-9]{6,}", combined_text)
-            if match and confidences:
-                avg_conf = round(np.mean(confidences), 2)
-
-                if avg_conf > best_confidence:
-                    best_match = match.group(0)
-                    best_confidence = avg_conf
+            for _, row in ocr_data.iterrows():
+                match = re.search(r"SMO[A-Z0-9]+", row["clean_text"])
+                if match:
+                    conf = float(row["conf"])
+                    if conf > best_confidence:
+                        best_match = match.group(0)
+                        best_confidence = conf
 
     if best_match:
-        return best_match, best_confidence
+        return best_match, round(best_confidence, 2)
 
     return None, None
 
 
-# ---------------- STREAMLIT UI ---------------- #
+# ---------------- STREAMLIT UI ----------------
 
 st.set_page_config(
-    page_title="SMO Shipment PDF Renamer (OCR)",
+    page_title="SMO PDF OCR Renamer",
     page_icon="📦",
     layout="centered"
 )
@@ -77,8 +57,8 @@ st.set_page_config(
 st.title("📦 SMO Shipment PDF Renamer (OCR)")
 st.write(
     "Upload **scanned shipment PDFs**. "
-    "The app extracts **SMO reference numbers**, boosts OCR confidence, "
-    "and lets you download renamed files."
+    "The app uses OCR to detect references starting with **SMO**, "
+    "supports **bulk uploads**, and shows **confidence scores**."
 )
 
 uploaded_files = st.file_uploader(
@@ -97,7 +77,7 @@ if uploaded_files:
             smo_ref, confidence = extract_smo_via_ocr_with_confidence(uploaded_file)
 
         if smo_ref:
-            st.success(f"✅ SMO Reference Found: **{smo_ref}**")
+            st.success(f"✅ Found: **{smo_ref}**")
             st.write(f"📊 OCR Confidence: **{confidence}%**")
 
             uploaded_file.seek(0)
@@ -113,8 +93,8 @@ if uploaded_files:
         else:
             st.error("❌ No SMO reference detected")
             st.info(
-                "OCR completed, but no valid reference starting with **SMO** "
-                "was found. This may be due to a low-quality scan."
+                "OCR completed but no reference starting with **SMO** was found. "
+                "This may be due to a low-quality scan."
             )
 
         st.divider()
