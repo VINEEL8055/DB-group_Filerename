@@ -12,3 +12,7 @@ pdfplumber
 pytesseract
 Pillow
 numpy
+streamlit
+openai
+pdfplumber
+python-docx
