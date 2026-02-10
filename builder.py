@@ -1,11 +1,20 @@
 import streamlit as st
 import openai
-from pypdf import PdfReader
 import io
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import re
+
+# Try importing PDF reader (handle both pypdf and PyPDF2)
+try:
+    from pypdf import PdfReader
+except ImportError:
+    try:
+        from PyPDF2 import PdfReader
+    except ImportError:
+        st.error("Please install pypdf or PyPDF2: pip install pypdf")
+        st.stop()
 
 # Page configuration
 st.set_page_config(
