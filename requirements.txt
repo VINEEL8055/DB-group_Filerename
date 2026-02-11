@@ -20,3 +20,8 @@ streamlit
 openai
 pypdf2
 python-dotenv
+streamlit
+openai
+pypdf
+PyPDF2
+fpdf2
