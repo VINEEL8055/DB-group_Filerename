@@ -279,6 +279,10 @@ def create_pdf(text):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
+    # Add Unicode font support
+    pdf.add_font('DejaVu', '', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', uni=True)
+    pdf.add_font('DejaVu', 'B', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', uni=True)
+    
     lines = text.split('\n')
     
     for line in lines:
@@ -288,9 +292,26 @@ def create_pdf(text):
             pdf.ln(3)
             continue
         
-        # Remove markdown formatting for plain text
+        # Clean special characters that might cause issues
         clean_line = line
+        # Replace common problematic characters
+        clean_line = clean_line.replace('—', '-')  # em dash
+        clean_line = clean_line.replace('–', '-')  # en dash
+        clean_line = clean_line.replace('"', '"')  # smart quotes
+        clean_line = clean_line.replace('"', '"')
+        clean_line = clean_line.replace(''', "'")
+        clean_line = clean_line.replace(''', "'")
+        clean_line = clean_line.replace('…', '...')
+        # Remove markdown bold markers for display
         clean_line = re.sub(r'\*\*(.*?)\*\*', r'\1', clean_line)
+        
+        # Encode to handle any remaining special characters
+        try:
+            # Try to encode/decode to catch issues
+            clean_line = clean_line.encode('latin-1', errors='ignore').decode('latin-1')
+        except:
+            # If still fails, remove non-ASCII characters
+            clean_line = ''.join(char for char in clean_line if ord(char) < 128)
         
         # Handle different types of content
         if line.startswith('# '):
@@ -312,7 +333,7 @@ def create_pdf(text):
         elif line.startswith('* '):
             # Bullet point
             pdf.set_font('Arial', '', 10)
-            bullet_text = clean_line.replace('* ', '• ')
+            bullet_text = clean_line.replace('* ', '  ')  # Use spaces instead of bullet
             pdf.multi_cell(0, 5, bullet_text)
         elif line == '---':
             # Horizontal rule
