@@ -4,17 +4,22 @@ import io
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 import re
 
-# Try importing PDF reader (handle both pypdf and PyPDF2)
+# Try importing PDF reader - handle both package names
 try:
     from pypdf import PdfReader
 except ImportError:
-    try:
-        from PyPDF2 import PdfReader
-    except ImportError:
-        st.error("Please install pypdf or PyPDF2: pip install pypdf")
-        st.stop()
+    from PyPDF2 import PdfReader
+
+# Import for PDF generation
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
 
 # Page configuration
 st.set_page_config(
@@ -374,16 +379,142 @@ def convert_to_html(text):
     return html
 
 
-def send_email(recipient_email, html_content, smtp_server, smtp_port, sender_email, sender_password):
-    """Send email with optimized resume"""
+def create_pdf(text):
+    """Convert resume text to PDF format"""
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter,
+                           rightMargin=0.75*inch, leftMargin=0.75*inch,
+                           topMargin=0.75*inch, bottomMargin=0.75*inch)
+    
+    # Styles
+    styles = getSampleStyleSheet()
+    
+    # Custom styles for resume
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        textColor='#000000',
+        spaceAfter=12,
+        alignment=TA_LEFT,
+        fontName='Helvetica-Bold'
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=12,
+        textColor='#000000',
+        spaceAfter=6,
+        spaceBefore=12,
+        alignment=TA_LEFT,
+        fontName='Helvetica-Bold'
+    )
+    
+    subheading_style = ParagraphStyle(
+        'CustomSubHeading',
+        parent=styles['Heading3'],
+        fontSize=10,
+        textColor='#000000',
+        spaceAfter=4,
+        spaceBefore=6,
+        alignment=TA_LEFT,
+        fontName='Helvetica-Bold'
+    )
+    
+    body_style = ParagraphStyle(
+        'CustomBody',
+        parent=styles['BodyText'],
+        fontSize=10,
+        textColor='#000000',
+        spaceAfter=4,
+        alignment=TA_LEFT,
+        fontName='Helvetica'
+    )
+    
+    bullet_style = ParagraphStyle(
+        'CustomBullet',
+        parent=styles['BodyText'],
+        fontSize=10,
+        textColor='#000000',
+        leftIndent=20,
+        spaceAfter=3,
+        alignment=TA_LEFT,
+        fontName='Helvetica',
+        bulletIndent=10
+    )
+    
+    # Build content
+    story = []
+    lines = text.split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        
+        if not line:
+            story.append(Spacer(1, 0.1*inch))
+            continue
+        
+        # Handle different markdown elements
+        if line.startswith('# '):
+            # Main title
+            clean_text = line.replace('# ', '')
+            story.append(Paragraph(clean_text, title_style))
+        elif line.startswith('## '):
+            # Section heading
+            clean_text = line.replace('## ', '')
+            story.append(Spacer(1, 0.1*inch))
+            story.append(Paragraph(clean_text, heading_style))
+        elif line.startswith('### '):
+            # Subsection
+            clean_text = line.replace('### ', '')
+            story.append(Paragraph(clean_text, subheading_style))
+        elif line.startswith('* '):
+            # Bullet point
+            clean_text = line.replace('* ', '• ')
+            # Handle bold text
+            clean_text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', clean_text)
+            story.append(Paragraph(clean_text, bullet_style))
+        elif line == '---':
+            # Horizontal rule
+            story.append(Spacer(1, 0.15*inch))
+        else:
+            # Normal text
+            # Handle bold text
+            clean_text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
+            story.append(Paragraph(clean_text, body_style))
+    
+    # Build PDF
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+def send_email(recipient_email, pdf_buffer, smtp_server, smtp_port, sender_email, sender_password):
+    """Send email with optimized resume as PDF attachment"""
     try:
-        msg = MIMEMultipart('alternative')
+        msg = MIMEMultipart()
         msg['Subject'] = "Your ATS Optimized Resume"
         msg['From'] = sender_email
         msg['To'] = recipient_email
         
-        html_part = MIMEText(html_content, 'html')
-        msg.attach(html_part)
+        # Email body
+        body = """Hello,
+
+Your ATS-optimized resume is attached to this email.
+
+Best regards,
+ATS Resume Optimizer"""
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Attach PDF
+        pdf_buffer.seek(0)
+        pdf_attachment = MIMEBase('application', 'pdf')
+        pdf_attachment.set_payload(pdf_buffer.read())
+        encoders.encode_base64(pdf_attachment)
+        pdf_attachment.add_header('Content-Disposition', 'attachment', filename='optimized_resume.pdf')
+        msg.attach(pdf_attachment)
         
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()
@@ -443,9 +574,21 @@ if submit_button:
                 st.subheader("📋 Your Optimized Resume")
                 st.markdown(optimized_resume)
                 
-                # Download button
+                # Generate PDF
+                with st.spinner("📄 Generating PDF..."):
+                    pdf_buffer = create_pdf(optimized_resume)
+                
+                # Download button for PDF
                 st.download_button(
-                    label="📥 Download Optimized Resume",
+                    label="📥 Download Optimized Resume (PDF)",
+                    data=pdf_buffer,
+                    file_name="optimized_resume.pdf",
+                    mime="application/pdf"
+                )
+                
+                # Also offer text download
+                st.download_button(
+                    label="📝 Download as Text",
                     data=optimized_resume,
                     file_name="optimized_resume.txt",
                     mime="text/plain"
@@ -454,9 +597,10 @@ if submit_button:
                 # Send email if requested and configured
                 if email_id and sender_email and sender_password:
                     with st.spinner("📧 Sending email..."):
-                        html_content = convert_to_html(optimized_resume)
-                        if send_email(email_id, html_content, smtp_server, smtp_port, sender_email, sender_password):
-                            st.success(f"✅ Email sent to {email_id}")
+                        # Create a fresh PDF buffer for email
+                        email_pdf_buffer = create_pdf(optimized_resume)
+                        if send_email(email_id, email_pdf_buffer, smtp_server, smtp_port, sender_email, sender_password):
+                            st.success(f"✅ Email with PDF sent to {email_id}")
                         else:
                             st.warning("⚠️ Resume optimized but email failed to send")
                 elif email_id:
