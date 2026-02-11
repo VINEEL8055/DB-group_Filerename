@@ -15,11 +15,7 @@ except ImportError:
     from PyPDF2 import PdfReader
 
 # Import for PDF generation
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
-from reportlab.lib.enums import TA_LEFT, TA_CENTER
+from fpdf import FPDF
 
 # Page configuration
 st.set_page_config(
@@ -268,229 +264,69 @@ A target job description (JD) for the role I am applying to:
         return None
 
 
-def convert_to_html(text):
-    """Convert markdown-style text to HTML for email"""
-    def escape_html(s):
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+class PDF(FPDF):
+    """Custom PDF class for resume"""
+    def header(self):
+        pass
     
-    lines = text.split("\n")
-    html_body = ""
-    in_list = False
-    
-    for raw_line in lines:
-        line = raw_line.strip()
-        
-        if not line:
-            if in_list:
-                html_body += "</ul>"
-                in_list = False
-            continue
-        
-        # Headings: ## Section
-        if line.startswith("## "):
-            if in_list:
-                html_body += "</ul>"
-                in_list = False
-            html_body += f"<h2>{escape_html(line.replace('## ', ''))}</h2>"
-            continue
-        
-        # Subheadings: ### Subsection
-        if line.startswith("### "):
-            if in_list:
-                html_body += "</ul>"
-                in_list = False
-            html_body += f"<h3>{escape_html(line.replace('### ', ''))}</h3>"
-            continue
-        
-        # Horizontal rule: ---
-        if line == "---":
-            if in_list:
-                html_body += "</ul>"
-                in_list = False
-            html_body += "<hr/>"
-            continue
-        
-        # Bullet: * item
-        if line.startswith("* "):
-            if not in_list:
-                html_body += "<ul>"
-                in_list = True
-            
-            bullet_text = escape_html(line.replace("* ", ""))
-            bullet_text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', bullet_text)
-            html_body += f"<li>{bullet_text}</li>"
-            continue
-        
-        # Normal paragraph
-        if in_list:
-            html_body += "</ul>"
-            in_list = False
-        para = escape_html(line)
-        para = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', para)
-        html_body += f"<p>{para}</p>"
-    
-    if in_list:
-        html_body += "</ul>"
-    
-    html = f"""
-    <div style="
-      max-width: 720px;
-      margin: 0 auto;
-      font-family: Arial, Helvetica, sans-serif;
-      font-size: 13px;
-      line-height: 1.25;
-      color: #111;
-    ">
-      <style>
-        h2{{
-          font-size: 15px;
-          margin: 10px 0 6px 0;
-          padding: 0;
-          letter-spacing: 0.2px;
-        }}
-        h3{{
-          font-size: 13px;
-          margin: 6px 0 4px 0;
-          padding: 0;
-          font-weight: 700;
-        }}
-        p{{
-          margin: 2px 0;
-          padding: 0;
-        }}
-        hr{{
-          border: none;
-          border-top: 1px solid #ddd;
-          margin: 8px 0;
-        }}
-        ul{{
-          margin: 2px 0 6px 18px;
-          padding: 0;
-        }}
-        li{{
-          margin: 0 0 2px 0;
-          padding: 0;
-        }}
-      </style>
-      {html_body}
-    </div>
-    """
-    
-    return html
+    def footer(self):
+        pass
 
 
 def create_pdf(text):
-    """Convert resume text to PDF format"""
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter,
-                           rightMargin=0.75*inch, leftMargin=0.75*inch,
-                           topMargin=0.75*inch, bottomMargin=0.75*inch)
+    """Convert resume text to PDF format using FPDF"""
+    pdf = PDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Styles
-    styles = getSampleStyleSheet()
-    
-    # Custom styles for resume
-    title_style = ParagraphStyle(
-        'CustomTitle',
-        parent=styles['Heading1'],
-        fontSize=16,
-        textColor='#000000',
-        spaceAfter=12,
-        alignment=TA_LEFT,
-        fontName='Helvetica-Bold'
-    )
-    
-    heading_style = ParagraphStyle(
-        'CustomHeading',
-        parent=styles['Heading2'],
-        fontSize=12,
-        textColor='#000000',
-        spaceAfter=6,
-        spaceBefore=12,
-        alignment=TA_LEFT,
-        fontName='Helvetica-Bold'
-    )
-    
-    subheading_style = ParagraphStyle(
-        'CustomSubHeading',
-        parent=styles['Heading3'],
-        fontSize=10,
-        textColor='#000000',
-        spaceAfter=4,
-        spaceBefore=6,
-        alignment=TA_LEFT,
-        fontName='Helvetica-Bold'
-    )
-    
-    body_style = ParagraphStyle(
-        'CustomBody',
-        parent=styles['BodyText'],
-        fontSize=10,
-        textColor='#000000',
-        spaceAfter=4,
-        alignment=TA_LEFT,
-        fontName='Helvetica'
-    )
-    
-    bullet_style = ParagraphStyle(
-        'CustomBullet',
-        parent=styles['BodyText'],
-        fontSize=10,
-        textColor='#000000',
-        leftIndent=20,
-        spaceAfter=3,
-        alignment=TA_LEFT,
-        fontName='Helvetica',
-        bulletIndent=10
-    )
-    
-    # Build content
-    story = []
     lines = text.split('\n')
     
     for line in lines:
         line = line.strip()
         
         if not line:
-            story.append(Spacer(1, 0.1*inch))
+            pdf.ln(3)
             continue
         
-        # Handle different markdown elements
+        # Remove markdown formatting for plain text
+        clean_line = line
+        clean_line = re.sub(r'\*\*(.*?)\*\*', r'\1', clean_line)
+        
+        # Handle different types of content
         if line.startswith('# '):
             # Main title
-            clean_text = line.replace('# ', '')
-            story.append(Paragraph(clean_text, title_style))
+            pdf.set_font('Arial', 'B', 16)
+            pdf.multi_cell(0, 8, clean_line.replace('# ', ''))
+            pdf.ln(2)
         elif line.startswith('## '):
             # Section heading
-            clean_text = line.replace('## ', '')
-            story.append(Spacer(1, 0.1*inch))
-            story.append(Paragraph(clean_text, heading_style))
+            pdf.set_font('Arial', 'B', 12)
+            pdf.ln(2)
+            pdf.multi_cell(0, 6, clean_line.replace('## ', ''))
+            pdf.ln(1)
         elif line.startswith('### '):
             # Subsection
-            clean_text = line.replace('### ', '')
-            story.append(Paragraph(clean_text, subheading_style))
+            pdf.set_font('Arial', 'B', 10)
+            pdf.multi_cell(0, 5, clean_line.replace('### ', ''))
+            pdf.ln(1)
         elif line.startswith('* '):
             # Bullet point
-            clean_text = line.replace('* ', '• ')
-            # Handle bold text
-            clean_text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', clean_text)
-            story.append(Paragraph(clean_text, bullet_style))
+            pdf.set_font('Arial', '', 10)
+            bullet_text = clean_line.replace('* ', '• ')
+            pdf.multi_cell(0, 5, bullet_text)
         elif line == '---':
             # Horizontal rule
-            story.append(Spacer(1, 0.15*inch))
+            pdf.ln(2)
         else:
             # Normal text
-            # Handle bold text
-            clean_text = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', line)
-            story.append(Paragraph(clean_text, body_style))
+            pdf.set_font('Arial', '', 10)
+            pdf.multi_cell(0, 5, clean_line)
     
-    # Build PDF
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
+    # Return PDF as bytes
+    return pdf.output(dest='S').encode('latin-1')
 
 
-def send_email(recipient_email, pdf_buffer, smtp_server, smtp_port, sender_email, sender_password):
+def send_email(recipient_email, pdf_data, smtp_server, smtp_port, sender_email, sender_password):
     """Send email with optimized resume as PDF attachment"""
     try:
         msg = MIMEMultipart()
@@ -509,9 +345,8 @@ ATS Resume Optimizer"""
         msg.attach(MIMEText(body, 'plain'))
         
         # Attach PDF
-        pdf_buffer.seek(0)
         pdf_attachment = MIMEBase('application', 'pdf')
-        pdf_attachment.set_payload(pdf_buffer.read())
+        pdf_attachment.set_payload(pdf_data)
         encoders.encode_base64(pdf_attachment)
         pdf_attachment.add_header('Content-Disposition', 'attachment', filename='optimized_resume.pdf')
         msg.attach(pdf_attachment)
@@ -576,12 +411,12 @@ if submit_button:
                 
                 # Generate PDF
                 with st.spinner("📄 Generating PDF..."):
-                    pdf_buffer = create_pdf(optimized_resume)
+                    pdf_data = create_pdf(optimized_resume)
                 
                 # Download button for PDF
                 st.download_button(
                     label="📥 Download Optimized Resume (PDF)",
-                    data=pdf_buffer,
+                    data=pdf_data,
                     file_name="optimized_resume.pdf",
                     mime="application/pdf"
                 )
@@ -597,9 +432,7 @@ if submit_button:
                 # Send email if requested and configured
                 if email_id and sender_email and sender_password:
                     with st.spinner("📧 Sending email..."):
-                        # Create a fresh PDF buffer for email
-                        email_pdf_buffer = create_pdf(optimized_resume)
-                        if send_email(email_id, email_pdf_buffer, smtp_server, smtp_port, sender_email, sender_password):
+                        if send_email(email_id, pdf_data, smtp_server, smtp_port, sender_email, sender_password):
                             st.success(f"✅ Email with PDF sent to {email_id}")
                         else:
                             st.warning("⚠️ Resume optimized but email failed to send")
