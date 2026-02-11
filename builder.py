@@ -278,10 +278,8 @@ def create_pdf(text):
     pdf = PDF()
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
-    
-    # Add Unicode font support
-    pdf.add_font('DejaVu', '', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', uni=True)
-    pdf.add_font('DejaVu', 'B', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', uni=True)
+    pdf.set_left_margin(15)
+    pdf.set_right_margin(15)
     
     lines = text.split('\n')
     
@@ -307,41 +305,53 @@ def create_pdf(text):
         
         # Encode to handle any remaining special characters
         try:
-            # Try to encode/decode to catch issues
-            clean_line = clean_line.encode('latin-1', errors='ignore').decode('latin-1')
+            # Remove any non-ASCII characters
+            clean_line = ''.join(char if ord(char) < 128 else ' ' for char in clean_line)
         except:
-            # If still fails, remove non-ASCII characters
             clean_line = ''.join(char for char in clean_line if ord(char) < 128)
         
         # Handle different types of content
-        if line.startswith('# '):
-            # Main title
-            pdf.set_font('Arial', 'B', 16)
-            pdf.multi_cell(0, 8, clean_line.replace('# ', ''))
-            pdf.ln(2)
-        elif line.startswith('## '):
-            # Section heading
-            pdf.set_font('Arial', 'B', 12)
-            pdf.ln(2)
-            pdf.multi_cell(0, 6, clean_line.replace('## ', ''))
-            pdf.ln(1)
-        elif line.startswith('### '):
-            # Subsection
-            pdf.set_font('Arial', 'B', 10)
-            pdf.multi_cell(0, 5, clean_line.replace('### ', ''))
-            pdf.ln(1)
-        elif line.startswith('* '):
-            # Bullet point
-            pdf.set_font('Arial', '', 10)
-            bullet_text = clean_line.replace('* ', '  ')  # Use spaces instead of bullet
-            pdf.multi_cell(0, 5, bullet_text)
-        elif line == '---':
-            # Horizontal rule
-            pdf.ln(2)
-        else:
-            # Normal text
-            pdf.set_font('Arial', '', 10)
-            pdf.multi_cell(0, 5, clean_line)
+        try:
+            if line.startswith('# '):
+                # Main title
+                pdf.set_font('Arial', 'B', 16)
+                text_content = clean_line.replace('# ', '')
+                if text_content:
+                    pdf.multi_cell(0, 8, text_content)
+                pdf.ln(2)
+            elif line.startswith('## '):
+                # Section heading
+                pdf.set_font('Arial', 'B', 12)
+                pdf.ln(2)
+                text_content = clean_line.replace('## ', '')
+                if text_content:
+                    pdf.multi_cell(0, 6, text_content)
+                pdf.ln(1)
+            elif line.startswith('### '):
+                # Subsection
+                pdf.set_font('Arial', 'B', 10)
+                text_content = clean_line.replace('### ', '')
+                if text_content:
+                    pdf.multi_cell(0, 5, text_content)
+                pdf.ln(1)
+            elif line.startswith('* '):
+                # Bullet point
+                pdf.set_font('Arial', '', 9)
+                text_content = clean_line.replace('* ', '- ')
+                if text_content:
+                    pdf.multi_cell(0, 5, text_content)
+            elif line == '---':
+                # Horizontal rule
+                pdf.ln(2)
+            else:
+                # Normal text
+                pdf.set_font('Arial', '', 10)
+                if clean_line:
+                    pdf.multi_cell(0, 5, clean_line)
+        except Exception as e:
+            # If any line fails, skip it and continue
+            print(f"Skipping line due to error: {str(e)}")
+            continue
     
     # Return PDF as bytes
     return pdf.output(dest='S').encode('latin-1')
