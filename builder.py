@@ -353,8 +353,8 @@ def create_pdf(text):
             print(f"Skipping line due to error: {str(e)}")
             continue
     
-    # Return PDF as bytes
-    return pdf.output(dest='S').encode('latin-1')
+    # Return PDF as bytes using fpdf2 syntax
+    return pdf.output()
 
 
 def send_email(recipient_email, pdf_data, smtp_server, smtp_port, sender_email, sender_password):
