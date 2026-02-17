@@ -25,3 +25,4 @@ openai
 pypdf
 PyPDF2
 fpdf2
+pypdf
